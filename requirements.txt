@@ -1,3 +1,6 @@
 requests
 pandas
 mysql-connector-python
+pymysql
+cryptography
+requests
