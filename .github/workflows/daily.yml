@@ -19,7 +19,12 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
-
+        
+      - name: Write DB CA certificate
+        run: |
+          echo "${{ secrets.DB_CA_B64 }}" | base64 -d > db-ca.pem
+          ls -l db-ca.pem
+          
       - name: Run script
         run: python getTrailheadData.py
         env:
