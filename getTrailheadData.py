@@ -1,4 +1,5 @@
 import os
+import mysql.connector
 import requests
 import pandas as pd
 from datetime import datetime
@@ -39,7 +40,12 @@ def get_db_connection():
         password=os.environ["DB_PASS"],
         database=os.environ["DB_NAME"],
         connection_timeout=20,
+
+        # TLS / SSL
+        ssl_ca=os.environ.get("DB_SSL_CA", "db-ca.pem"),
+        ssl_verify_cert=True,
     )
+
 
 def load_profiles_from_db(conn):
     sql = "SELECT username FROM trailhead_profiles WHERE active = 1"
