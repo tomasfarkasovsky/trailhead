@@ -25,6 +25,16 @@ jobs:
           echo "${{ secrets.DB_CA_B64 }}" | base64 -d > db-ca.pem
           ls -l db-ca.pem
 
+      - name: Check secret presence
+        shell: bash
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+        run: |
+          echo "DB_HOST length: ${#DB_HOST}"
+          echo "DB_PORT length: ${#DB_PORT}"
+
+
       - name: Debug DB host resolution & port reachability
         shell: bash
         run: |
