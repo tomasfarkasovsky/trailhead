@@ -76,7 +76,7 @@ def get_db_connection():
 
 
 def load_profiles_from_db(conn) -> List[str]:
-    sql = "SELECT username FROM trailhead_profiles WHERE active = 1"
+    sql = "SELECT username FROM trailhead_user WHERE active = 1"
     with conn.cursor() as cur:
         cur.execute(sql)
         return [row[0] for row in cur.fetchall()]
