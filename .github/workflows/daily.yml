@@ -2,7 +2,7 @@ name: Daily Trailhead Certifications Sync
 
 on:
   schedule:
-    - cron: "15 3 * * *"  # daily at 03:15 UTC
+    - cron: "22 * * * *"  # daily at 03:15 UTC
   workflow_dispatch:
 
 jobs:
@@ -24,6 +24,27 @@ jobs:
         run: |
           echo "${{ secrets.DB_CA_B64 }}" | base64 -d > db-ca.pem
           ls -l db-ca.pem
+
+      - name: Debug DB host resolution & port reachability
+        shell: bash
+        run: |
+          echo "DB_HOST is set? $([[ -n "${DB_HOST}" ]] && echo yes || echo no)"
+          echo "DB_PORT is set? $([[ -n "${DB_PORT}" ]] && echo yes || echo no)"
+      
+          python - <<'PY'
+          import os, socket
+          host = os.environ.get("DB_HOST", "")
+          print("DB_HOST raw:", host)
+          try:
+            print("getaddrinfo:", socket.getaddrinfo(host, None))
+          except Exception as e:
+            print("DNS FAILED:", repr(e))
+            raise
+          PY
+      
+          # Optional: check if port is reachable (won't print secrets)
+          timeout 5 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" && echo "TCP OK" || echo "TCP FAILED"
+
           
       - name: Run script
         run: python getTrailheadData.py
