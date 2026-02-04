@@ -2,7 +2,7 @@ name: Daily Trailhead Certifications Sync
 
 on:
   schedule:
-    - cron: "22 * * * *"  # daily at 03:15 UTC
+    - cron: "15 3 * * *"  # daily at 03:15 UTC
   workflow_dispatch:
 
 jobs:
