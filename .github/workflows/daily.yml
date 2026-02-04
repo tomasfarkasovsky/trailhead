@@ -34,6 +34,43 @@ jobs:
           echo "DB_HOST length: ${#DB_HOST}"
           echo "DB_PORT length: ${#DB_PORT}"
 
+      - name: Debug DB DNS + TCP (safe)
+          shell: bash
+          env:
+            DB_HOST: ${{ secrets.DB_HOST }}
+            DB_PORT: ${{ secrets.DB_PORT }}
+          run: |
+            python - <<'PY'
+            import os, socket
+            host = os.environ["DB_HOST"]
+            port = int(os.environ["DB_PORT"])
+        
+            print("host has colon:", ":" in host)
+            print("host has spaces:", any(c.isspace() for c in host))
+            print("host stripped changed:", host != host.strip())
+            print("port numeric:", port)
+        
+            try:
+              infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
+              ips = sorted({i[4][0] for i in infos})
+              print("DNS OK, IP count:", len(ips))
+            except Exception as e:
+              print("DNS FAILED:", repr(e))
+              raise
+        
+            s = socket.socket()
+            s.settimeout(5)
+            try:
+              s.connect((host, port))
+              print("TCP OK")
+            except Exception as e:
+              print("TCP FAILED:", repr(e))
+              raise
+            finally:
+              s.close()
+            PY
+
+
 
       - name: Debug DB host resolution & port reachability
         shell: bash
