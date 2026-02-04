@@ -25,107 +25,51 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt
-        
+
       - name: Write DB CA certificate
         run: |
           echo "${{ secrets.DB_CA_B64 }}" | base64 -d > db-ca.pem
           ls -l db-ca.pem
 
-      - name: Check secret presence
+      - name: Debug DB env + DNS + TCP (safe)
         shell: bash
-        env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
         run: |
+          echo "DB_HOST is set? $([[ -n "${DB_HOST}" ]] && echo yes || echo no)"
+          echo "DB_PORT is set? $([[ -n "${DB_PORT}" ]] && echo yes || echo no)"
           echo "DB_HOST length: ${#DB_HOST}"
           echo "DB_PORT length: ${#DB_PORT}"
 
-      - name: Debug DB host resolution & port reachability
-        shell: bash
-        env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-        run: |
-          echo "DB_HOST is set? $([[ -n "${DB_HOST}" ]] && echo yes || echo no)"
-          echo "DB_PORT is set? $([[ -n "${DB_PORT}" ]] && echo yes || echo no)"
-      
           python - <<'PY'
           import os, socket
-          host = os.environ.get("DB_HOST", "")
-          port = os.environ.get("DB_PORT", "")
-          print("DB_HOST raw:", host)
-          print("DB_PORT raw:", port)
-          print("getaddrinfo:", socket.getaddrinfo(host, None))
-          PY
-      
-          timeout 5 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" && echo "TCP OK" || echo "TCP FAILED"
+          host = os.environ["DB_HOST"]
+          port = int(os.environ["DB_PORT"])
 
+          print("host has colon:", ":" in host)
+          print("host has spaces:", any(c.isspace() for c in host))
+          print("host stripped changed:", host != host.strip())
+          print("port numeric:", port)
 
-      - name: Debug DB DNS + TCP (safe)
-          shell: bash
-          env:
-            DB_HOST: ${{ secrets.DB_HOST }}
-            DB_PORT: ${{ secrets.DB_PORT }}
-          run: |
-            python - <<'PY'
-            import os, socket
-            host = os.environ["DB_HOST"]
-            port = int(os.environ["DB_PORT"])
-        
-            print("host has colon:", ":" in host)
-            print("host has spaces:", any(c.isspace() for c in host))
-            print("host stripped changed:", host != host.strip())
-            print("port numeric:", port)
-        
-            try:
+          try:
               infos = socket.getaddrinfo(host, port, proto=socket.IPPROTO_TCP)
               ips = sorted({i[4][0] for i in infos})
               print("DNS OK, IP count:", len(ips))
-            except Exception as e:
+          except Exception as e:
               print("DNS FAILED:", repr(e))
               raise
-        
-            s = socket.socket()
-            s.settimeout(5)
-            try:
+
+          s = socket.socket()
+          s.settimeout(5)
+          try:
               s.connect((host, port))
               print("TCP OK")
-            except Exception as e:
+          except Exception as e:
               print("TCP FAILED:", repr(e))
               raise
-            finally:
+          finally:
               s.close()
-            PY
-
-
-
-      - name: Debug DB host resolution & port reachability
-        shell: bash
-        run: |
-          echo "DB_HOST is set? $([[ -n "${DB_HOST}" ]] && echo yes || echo no)"
-          echo "DB_PORT is set? $([[ -n "${DB_PORT}" ]] && echo yes || echo no)"
-      
-          python - <<'PY'
-          import os, socket
-          host = os.environ.get("DB_HOST", "")
-          print("DB_HOST raw:", host)
-          try:
-            print("getaddrinfo:", socket.getaddrinfo(host, None))
-          except Exception as e:
-            print("DNS FAILED:", repr(e))
-            raise
           PY
-      
-          # Optional: check if port is reachable (won't print secrets)
-          timeout 5 bash -c "</dev/tcp/${DB_HOST}/${DB_PORT}" && echo "TCP OK" || echo "TCP FAILED"
 
-          
       - name: Run script
-        run: python getTrailheadData.py
         env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_PORT: ${{ secrets.DB_PORT }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_PASS: ${{ secrets.DB_PASS }}
           DB_SSL_CA: db-ca.pem
+        run: python getTrailheadData.py
