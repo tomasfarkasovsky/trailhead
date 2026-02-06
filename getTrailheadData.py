@@ -1,6 +1,5 @@
 import os
 import sys
-import csv
 import requests
 import mysql.connector
 from datetime import datetime, date
@@ -89,11 +88,18 @@ def set_session_limits(conn) -> None:
 
 
 def upsert_user(conn, name: str, username: str) -> int:
+    """
+    Do NOT overwrite existing 'name' if it already exists.
+    Fill it only when NULL or empty string.
+    """
     sql = """
     INSERT INTO trailhead_user (name, username)
     VALUES (%s, %s)
     ON DUPLICATE KEY UPDATE
-      name = VALUES(name),
+      name = CASE
+        WHEN trailhead_user.name IS NULL OR trailhead_user.name = '' THEN VALUES(name)
+        ELSE trailhead_user.name
+      END,
       updated_at = CURRENT_TIMESTAMP
     """
     with conn.cursor() as cur:
@@ -120,12 +126,16 @@ def upsert_cert(conn, title: str, product: Optional[str]) -> int:
 
 
 def upsert_user_cert(conn, user_id: int, cert_id: int, date_completed: date, date_expired: Optional[date]) -> None:
+    """
+    Upsert the relation. Only bump updated_at when date_expired actually changes.
+    (If you don't care about updated_at churn, you can simplify this back.)
+    """
     sql = """
     INSERT INTO trailhead_user_cert (user_id, cert_id, date_completed, date_expired)
     VALUES (%s, %s, %s, %s)
     ON DUPLICATE KEY UPDATE
       date_expired = VALUES(date_expired),
-      updated_at = CURRENT_TIMESTAMP
+      updated_at = IF(VALUES(date_expired) <=> date_expired, updated_at, CURRENT_TIMESTAMP)
     """
     with conn.cursor() as cur:
         cur.execute(sql, (user_id, cert_id, date_completed, date_expired))
@@ -159,7 +169,6 @@ def fetch_certifications(username: str) -> Dict[str, Any]:
     if not profile:
         return {"Username": username, "Error": "No public profile found"}
 
-    # IMPORTANT: credential is under PublicProfile.profile.credential
     credential = profile.get("credential") or {}
     certifications = credential.get("certifications") or []
 
@@ -170,7 +179,6 @@ def fetch_certifications(username: str) -> Dict[str, Any]:
             continue
 
         dc = parse_iso_date(c.get("dateCompleted"))
-        # We store only certs with a completion date (required for year logic)
         if not dc:
             continue
 
@@ -199,43 +207,9 @@ def sync_user_to_db(conn, username: str, certs_raw: List[Dict[str, Any]]) -> Non
 
 
 # -----------------------------
-# Export (from view)
-# -----------------------------
-def export_stats_csv_from_view(conn, csv_filename: str) -> int:
-    """
-    Exports your tracking fields from v_trailhead_user_stats:
-    - name
-    - username
-    - overall unique cert titles
-    - current year unique titles
-    - past year unique titles
-    - lists (all/current/past)
-    - updated_at
-    """
-    with conn.cursor(dictionary=True) as cur:
-        cur.execute("SELECT * FROM v_trailhead_user_stats ORDER BY username")
-        rows = cur.fetchall()
-
-    if not rows:
-        print("No rows returned from v_trailhead_user_stats")
-        return 0
-
-    fieldnames = list(rows[0].keys())
-    with open(csv_filename, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        w.writerows(rows)
-
-    return len(rows)
-
-
-# -----------------------------
 # Main
 # -----------------------------
 def main() -> int:
-    year = datetime.utcnow().year
-    csv_filename = f"trailhead_stats_{year}.csv"
-
     conn = get_db_connection()
     try:
         set_session_limits(conn)
@@ -260,9 +234,6 @@ def main() -> int:
 
         conn.commit()
         print(f"✅ MySQL synced for {ok} users")
-
-        exported = export_stats_csv_from_view(conn, csv_filename)
-        print(f"✅ CSV saved to '{csv_filename}' ({exported} rows)")
 
         if errors:
             print(f"⚠️ Completed with {errors} errors (see logs above)")
